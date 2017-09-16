@@ -36,8 +36,8 @@ diff --git a/hello.c b/hello.c
 
 
 def test_build_patch(phabfactory, docker_env_vars):
-    phabfactory.user(username='mpm_at_selenic', phid='PHID-USER-mpm')
-    phabfactory.revision(id='D5', author_phid='PHID-USER-mpm')
+    author = phabfactory.user(username='mpm_at_selenic')
+    phabfactory.revision(id='D5', author=author)
 
     phab = PhabricatorClient(api_key='api-key')
     revision = phab.get_revision(id='D5')
