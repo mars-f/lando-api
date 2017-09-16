@@ -63,6 +63,10 @@ class PhabResponseFactory:
                 Revision's "active diff" (usually this Revision's most recently
                 uploaded patch). If you manually set an active diff, it must
                 have been made with this factory.
+            author: Specify the Phabricator user that owns this revision.
+                The parameter value is a JSON dict returned from calling
+                PhabFactory.user().  A new author for the revision will be
+                created if one isn't given by the caller.
 
         Returns:
             The full JSON response dict for the generated Revision.
@@ -80,8 +84,17 @@ class PhabResponseFactory:
             revision['id'] = num_id
             revision['phid'] = "PHID-DREV-%s" % num_id
 
-        if 'author_phid' in kwargs:
-            revision['authorPHID'] = kwargs['author_phid']
+        # Set and optionally create the revision's author.
+        author_phid = None
+
+        if 'author' in kwargs:
+            author_phid = phid_for_response(kwargs['author'])
+        elif 'author_phid' in kwargs:
+            author_phid = kwargs['author_phid']
+        else:
+            author_phid = phid_for_response(self.user())
+
+        revision['authorPHID'] = author_phid
 
         if 'depends_on' in kwargs:
             parent_revision_response_data = kwargs['depends_on']
