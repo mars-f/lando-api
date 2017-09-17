@@ -84,17 +84,12 @@ class PhabResponseFactory:
             revision['id'] = num_id
             revision['phid'] = "PHID-DREV-%s" % num_id
 
-        # Set and optionally create the revision's author.
-        author_phid = None
-
         if 'author' in kwargs:
-            author_phid = phid_for_response(kwargs['author'])
-        elif 'author_phid' in kwargs:
-            author_phid = kwargs['author_phid']
+            revision['authorPHID'] = phid_for_response(kwargs['author'])
         else:
-            author_phid = phid_for_response(self.user())
-
-        revision['authorPHID'] = author_phid
+            # Every revision has an author, so create a new user to associate
+            # with this revision as its author.
+            revision['authorPHID'] = phid_for_response(self.user())
 
         if 'depends_on' in kwargs:
             parent_revision_response_data = kwargs['depends_on']
