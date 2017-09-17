@@ -28,8 +28,7 @@ def test_landing_revision_saves_data_in_db(
     # Id of the diff existing in Phabricator
     diff_id = 2
 
-    phabfactory.user()
-    phabfactory.revision()
+    phabfactory.revision(id='D1')
     transfactory.create_autoland_response(land_request_id)
 
     response = client.post(
@@ -55,8 +54,7 @@ def test_landing_revision_calls_transplant_service(
     db, client, phabfactory, monkeypatch, s3
 ):
     # Mock the phabricator response data
-    phabfactory.user()
-    phabfactory.revision()
+    phabfactory.revision(id='D1')
 
     # Build the patch we expect to see
     phabclient = PhabricatorClient('someapi')

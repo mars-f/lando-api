@@ -42,8 +42,10 @@ def test_build_patch(phabfactory, docker_env_vars):
     phab = PhabricatorClient(api_key='api-key')
     revision = phab.get_revision(id='D5')
     revision['summary'] = "Express great joy at existence of Mercurial"
-    author = phab.get_revision_author(revision)
+    author_data = phab.get_revision_author(revision)
 
-    patch = build_patch_for_revision(git_diff_from_revision, author, revision)
+    patch = build_patch_for_revision(
+        git_diff_from_revision, author_data, revision
+    )
 
     assert patch == hg_patch

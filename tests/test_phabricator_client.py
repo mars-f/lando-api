@@ -68,9 +68,9 @@ def test_get_repo_returns_with_200_response(phabfactory):
 
 
 def test_get_author_for_revision(phabfactory):
-    user_response = phabfactory.user()
-    phabfactory.revision(id='D5')
-    expected_user = first_result_in_response(user_response)
+    user = phabfactory.user()
+    phabfactory.revision(id='D5', author=user)
+    expected_user = first_result_in_response(user)
 
     phab = PhabricatorClient(api_key='api-key')
     revision = phab.get_revision(id='D5')
