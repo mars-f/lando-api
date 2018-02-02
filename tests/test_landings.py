@@ -61,9 +61,7 @@ def test_landing_revision_saves_data_in_db(
     assert landing.serialize() == CANNED_LANDING_FACTORY_1
 
 
-def test_landing_without_auth0_permissions(
-    db, client, phabfactory, transfactory, s3, auth0_mock
-):
+def test_landing_without_auth0_permissions(client, auth0_mock):
     auth0_mock.userinfo = CANNED_USERINFO['NO_CUSTOM_CLAIMS']
 
     response = client.post(
