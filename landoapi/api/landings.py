@@ -14,8 +14,8 @@ from sqlalchemy.orm.exc import NoResultFound
 
 from landoapi import auth
 from landoapi.decorators import require_phabricator_api_key
-from landoapi.landings import LandingAssessment, validate_email, \
-    validate_scm_level
+from landoapi.landings import LandingAssessment, collect_landing_request_data, \
+    validate_email, validate_scm_level
 from landoapi.models.landing import (
     InactiveDiffException,
     Landing,
@@ -40,9 +40,10 @@ def post(data):
     validate_scm_level()
 
     # get revision_id from body
-    revision_id = revision_id_to_int(data['revision_id'])
-    diff_id = data['diff_id']
-    override_diff_id = data.get('force_override_of_diff_id')
+    # revision_id = revision_id_to_int(data['revision_id'])
+    # diff_id = data['diff_id']
+    # override_diff_id = data.get('force_override_of_diff_id')
+    landing_data = collect_landing_request_data(data)
     logger.info(
         {
             'path': request.path,
@@ -51,6 +52,9 @@ def post(data):
             'msg': 'landing requested by user'
         }, 'landing.invoke'
     )
+
+    validate_diff_ids(landing_data)
+
     try:
         landing = Landing.create(
             revision_id,

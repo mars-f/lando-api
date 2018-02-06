@@ -8,6 +8,8 @@ from typing import NamedTuple
 from connexion import ProblemException
 from flask import g
 
+from landoapi.validation import revision_id_to_int
+
 
 class LandingAssessment:
     """Represents an assessment of issues that may block a revision landing.
@@ -87,6 +89,32 @@ class LandingAssessment:
         return hashlib.sha256(warnings_json).hexdigest()
 
 
+LandingRequestData = NamedTuple(
+    'LandingRequestData', [
+        ('revision_id', int),
+        ('diff_id', int),
+        ('overriding_diff_id', int),
+        ('active_diff_id', int),
+    ]
+)
+
+
+def collect_landing_request_data(post_data):
+    # FIXME instead of pre-fetching, could we cache the phabricator responses?
+    revision_id = revision_id_to_int(post_data['revision_id'])
+    revision = g.phabricator.get_revision(id=revision_id)
+    # FIXME add empty revison check
+    #     if not revision:
+    #         raise RevisionNotFoundException(revision_id)
+    active_diff_id = g.phabricator.diff_phid_to_id(revision['activeDiffPHID'])
+    return LandingRequestData(
+        revision_id=revision_id,
+        diff_id=post_data['diff_id'],
+        overriding_diff_id=post_data.get('force_override_of_diff_id'),
+        active_diff_id=active_diff_id
+    )
+
+
 def has_valid_email():
     return g.auth0_user.email
 
@@ -95,15 +123,79 @@ def has_sufficient_scm_level():
     return g.auth0_user.can_land_changes()
 
 
+def check_requested_diff_is_active(landing_data):
+    return bool(landing_data.diff_id == landing_data.active_diff_id)
+
+
+def check_overriding_diff_is_active(landing_data):
+    return bool(landing_data.overriding_diff_id == landing_data.active_diff_id)
+
+
 LandingProblem = NamedTuple(
-    'LandingProblem', [
+    'LandingProblem',
+    [
         ('status_code', int),
         ('error_id', str),
         ('title', str),
         ('detail', str),
-        ('error_type', str),    # FIXME docstring to explain contents
+        ('error_type', str),  # FIXME docstring to explain contents
     ]
 )
+
+# def validate_diff_id(phab, revision_id, diff_to_land, overriding_diff_id):
+#     revision = phab.get_revision(id=revision_id)
+#
+#     if not revision:
+#         raise RevisionNotFoundException(revision_id)
+#
+#     # Validate overriding of the diff id.
+#     active_id = phab.diff_phid_to_id(revision['activeDiffPHID'])
+#     # If diff used to land revision is not the active one Lando API will
+#     # fail with a 409 error. The client will then inform the user that
+#     # Lando API might be forced to land that diff if that's what the user
+#     # wants.
+#     # In such case the client will request a new landing with a
+#     # force_override_of_diff_id parameter equal to the active diff id.
+#     # API will proceed with the landing.
+#     if overriding_diff_id:
+#         if overriding_diff_id != active_id:
+#             raise OverrideDiffException(
+#                 diff_to_land, active_id, overriding_diff_id
+#             )
+#         logger.warning(
+#             {
+#                 'revision_id': revision_id,
+#                 'diff_id': diff_to_land,
+#                 'active_diff_id': active_id,
+#                 'overriding_diff_id': overriding_diff_id,
+#                 'msg': 'Forced to override the active Diff'
+#             }, 'landing.warning'
+#         )
+#     elif diff_id != active_id:
+#         raise InactiveDiffException(diff_id, active_id)
+
+# def get_ui_diff_id_warning(phab, revision_id, diff_to_land, overriding_diff_id):
+#     # FIXME this can be lifted
+#     revision = phab.get_revision(id=revision_id)
+#
+#     if not revision:
+#         raise RevisionNotFoundException(revision_id)
+#
+#
+#     # Check if a newer diff is available to land.
+#     # if revision['diff']['id'] < revision['latest_diff_id']:
+#     active_id = phab.diff_phid_to_id(revision['activeDiffPHID'])
+#     if revision['diff']['id'] < active_id:
+#         # add_warning(
+#         #     id='warning-not-latest-diff',
+#         #     text='You are viewing Diff {old_diff_id}, but, Diff {new_diff_id} '
+#         #     'is now the latest diff of this revision.'.format(
+#         #         old_diff_id=revision['diff']['id'],
+#         #         new_diff_id=revision['latest_diff_id']
+#         #     )
+#         # )
+#         return warning_for_problem(DiffInactive)
+
 HTTPNotAuthorized = LandingProblem(
     status_code=403,
     error_id='E1',
@@ -153,7 +245,16 @@ def raise_problem(problem_details):
     )
 
 
+def validate_diff_ids(landing_data, warn_only=False):
+    if landing_data.overriding_diff_id:
+        return validate_overriding_diff(landing_data, warn_only=warn_only)
+    else:
+        return validate_requested_diff(landing_data, warn_only=warn_only)
+
+
 validate_email = validate_any(has_valid_email, UnverifiedEmail)
 validate_scm_level = validate_any(
     has_sufficient_scm_level, InsufficientSCMLevel
 )
+validate_requested_diff = validate_any(check_requested_diff_is_active, InactiveDiff)
+validate_overriding_diff = validate_any(check_overriding_diff_is_active, InactiveOverridingDiff)
