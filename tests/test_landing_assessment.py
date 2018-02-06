@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from landoapi.api.landings import LandingAssessment
+from landoapi.landings import LandingAssessment
 
 
 def json_str(**kwargs):
