@@ -3,6 +3,10 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 import hashlib
 import json
+from typing import NamedTuple
+
+from connexion import ProblemException
+from flask import g
 
 
 class LandingAssessment:
@@ -81,3 +85,75 @@ class LandingAssessment:
             warnings_dict, sort_keys=True
         ).encode('UTF-8')
         return hashlib.sha256(warnings_json).hexdigest()
+
+
+def has_valid_email():
+    return g.auth0_user.email
+
+
+def has_sufficient_scm_level():
+    return g.auth0_user.can_land_changes()
+
+
+LandingProblem = NamedTuple(
+    'LandingProblem', [
+        ('status_code', int),
+        ('error_id', str),
+        ('title', str),
+        ('detail', str),
+        ('error_type', str),    # FIXME docstring to explain contents
+    ]
+)
+HTTPNotAuthorized = LandingProblem(
+    status_code=403,
+    error_id='E1',
+    title='Not Authorized',
+    detail='You\'re not authorized to proceed.',
+    error_type='https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/403',
+)
+UnverifiedEmail = LandingProblem(
+    status_code=403,
+    error_id='E2',
+    title='Unverified email',
+    detail='You do not have a Mozilla verified email address.',
+    # FIXME: type URL should point to the API documentation
+    error_type='https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/403',
+)
+InsufficientSCMLevel = LandingProblem(
+    status_code=403,
+    error_id='E3',
+    title='Insufficient SCM level',
+    detail='You do not have the required permissions to request landing.',
+    # FIXME: type URL should point to the API documentation
+    error_type='https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/403',
+)
+
+
+def validate_any(predicate, problem_details):
+    def _validate(*args, warn_only=False, **kwargs):
+        if not predicate(*args, **kwargs):
+            if warn_only:
+                return warning_for_problem(problem_details)
+            else:
+                raise_problem(problem_details)
+
+    return _validate
+
+
+def warning_for_problem(problem_details):
+    return {'id': problem_details.error_id}
+
+
+def raise_problem(problem_details):
+    raise ProblemException(
+        status=problem_details.status_code,
+        title=problem_details.title,
+        detail=problem_details.detail,
+        type=problem_details.error_type
+    )
+
+
+validate_email = validate_any(has_valid_email, UnverifiedEmail)
+validate_scm_level = validate_any(
+    has_sufficient_scm_level, InsufficientSCMLevel
+)

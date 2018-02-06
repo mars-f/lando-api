@@ -14,7 +14,8 @@ from sqlalchemy.orm.exc import NoResultFound
 
 from landoapi import auth
 from landoapi.decorators import require_phabricator_api_key
-from landoapi.landings import LandingAssessment
+from landoapi.landings import LandingAssessment, validate_email, \
+    validate_scm_level
 from landoapi.models.landing import (
     InactiveDiffException,
     Landing,
@@ -35,21 +36,8 @@ logger = logging.getLogger(__name__)
 @require_phabricator_api_key(optional=True)
 def post(data):
     """API endpoint at POST /landings to land revision."""
-    if not g.auth0_user.email:
-        return problem(
-            403,
-            'Not Authorized',
-            'You do not have a Mozilla verified email address.',
-            type='https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/403'
-        )
-
-    if not g.auth0_user.can_land_changes():
-        return problem(
-            403,
-            'Not Authorized',
-            'You do not have the required permissions to request landing.',
-            type='https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/403'
-        )
+    validate_email()
+    validate_scm_level()
 
     # get revision_id from body
     revision_id = revision_id_to_int(data['revision_id'])
@@ -295,7 +283,13 @@ def dryrun(data):
     # TODO unused for now, just parse the data for errors
     revision_id_to_int(data['revision_id'])
 
-    assessment = LandingAssessment([], [])
+    warnings = []
+    for check in (validate_email, validate_scm_level):
+        details = check(warn_only=True)
+        if details:
+            warnings.append(details)
+
+    assessment = LandingAssessment(warnings, [])
     return jsonify(assessment.to_dict())
 
 

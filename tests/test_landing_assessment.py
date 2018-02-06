@@ -2,15 +2,27 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 import json
+from copy import deepcopy
 
 import pytest
 
+from landoapi import landings
 from landoapi.landings import LandingAssessment
 
 
 def json_str(**kwargs):
     """Helper that turns its keyword args into a JSON-encoded string."""
     return json.dumps(kwargs)
+
+
+def invalidate_email(userinfo):
+    """Helper to invalidate the email address in an Auth0 userinfo dict."""
+    del userinfo['email_verified']
+
+
+def strip_scm_level(userinfo):
+    """Helper to strip the SCM level claims from an Auth0 userinfo dict."""
+    userinfo['https://sso.mozilla.com/claim/groups'] = []
 
 
 def test_no_warnings_or_problems(client, phabfactory, auth0_mock):
@@ -49,6 +61,68 @@ def test_no_auth0_headers_returns_error(client):
         content_type='application/json',
     )
     assert response.status_code == 401
+
+
+def test_warning_for_unverified_email(client, auth0_mock):
+    # Change email to unvalidated
+    userinfo = deepcopy(auth0_mock.userinfo)
+    invalidate_email(userinfo)
+    auth0_mock.userinfo = userinfo
+
+    expected_error = landings.warning_for_problem(landings.UnverifiedEmail)
+    expected_json = LandingAssessment([expected_error], []).to_dict()
+
+    response = client.post(
+        '/landings/dryrun',
+        data=json_str(revision_id='D1', diff_id=1),
+        headers=auth0_mock.mock_headers,
+        content_type='application/json',
+    )
+
+    assert response.status_code == 200
+    assert response.json == expected_json
+
+
+def test_warning_for_insufficient_scm_level(client, auth0_mock):
+    # Remove SCM level 3 claim from Mozilla claim groups
+    userinfo = deepcopy(auth0_mock.userinfo)
+    strip_scm_level(userinfo)
+    auth0_mock.userinfo = userinfo
+
+    expected_error = landings.warning_for_problem(landings.InsufficientSCMLevel)
+    expected_json = LandingAssessment([expected_error], []).to_dict()
+
+    response = client.post(
+        '/landings/dryrun',
+        data=json_str(revision_id='D1', diff_id=1),
+        headers=auth0_mock.mock_headers,
+        content_type='application/json',
+    )
+
+    assert response.status_code == 200
+    assert response.json == expected_json
+
+
+def test_multiple_warnings(client, auth0_mock):
+    # Simulate two problems with the landing request
+    userinfo = deepcopy(auth0_mock.userinfo)
+    invalidate_email(userinfo)
+    strip_scm_level(userinfo)
+    auth0_mock.userinfo = userinfo
+
+    invalid_email_error = landings.warning_for_problem(landings.UnverifiedEmail)
+    insufficient_scm_error = landings.warning_for_problem(landings.InsufficientSCMLevel)
+    expected_json = LandingAssessment([invalid_email_error, insufficient_scm_error], []).to_dict()
+
+    response = client.post(
+        '/landings/dryrun',
+        data=json_str(revision_id='D1', diff_id=1),
+        headers=auth0_mock.mock_headers,
+        content_type='application/json',
+    )
+
+    assert response.status_code == 200
+    assert response.json == expected_json
 
 
 def test_construct_assessment_dict_no_warnings_or_problems():
