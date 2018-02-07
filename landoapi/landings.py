@@ -123,11 +123,11 @@ def has_sufficient_scm_level():
     return g.auth0_user.can_land_changes()
 
 
-def check_requested_diff_is_active(landing_data):
+def is_requested_diff_active(landing_data):
     return bool(landing_data.diff_id == landing_data.active_diff_id)
 
 
-def check_overriding_diff_is_active(landing_data):
+def is_overriding_diff_active(landing_data):
     return bool(landing_data.overriding_diff_id == landing_data.active_diff_id)
 
 
@@ -219,6 +219,22 @@ InsufficientSCMLevel = LandingProblem(
     # FIXME: type URL should point to the API documentation
     error_type='https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/403',
 )
+InactiveDiff = LandingProblem(
+    status_code=403,
+    error_id='E4',
+    title='Inactive diff FOO',  # FIXME
+    detail='Inactive diff BAR',  # FIXME
+    # FIXME: type URL should point to the API documentation
+    error_type='https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/403',
+)
+InactiveOverridingDiff = LandingProblem(
+    status_code=403,
+    error_id='E5',
+    title='Inactive overriding diff FOO',  # FIXME
+    detail='Inactive overriding diff BAR',  # FIXME
+    # FIXME: type URL should point to the API documentation
+    error_type='https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/403',
+)
 
 
 def validate_any(predicate, problem_details):
@@ -256,5 +272,5 @@ validate_email = validate_any(has_valid_email, UnverifiedEmail)
 validate_scm_level = validate_any(
     has_sufficient_scm_level, InsufficientSCMLevel
 )
-validate_requested_diff = validate_any(check_requested_diff_is_active, InactiveDiff)
-validate_overriding_diff = validate_any(check_overriding_diff_is_active, InactiveOverridingDiff)
+validate_requested_diff = validate_any(is_requested_diff_active, InactiveDiff)
+validate_overriding_diff = validate_any(is_overriding_diff_active, InactiveOverridingDiff)
