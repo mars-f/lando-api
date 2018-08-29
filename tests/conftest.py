@@ -3,6 +3,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 import json
 import os
+import socket
 from types import SimpleNamespace
 
 import boto3
@@ -19,7 +20,6 @@ from landoapi.mocks.auth import MockAuth0, TEST_JWKS
 from landoapi.phabricator import PhabricatorClient
 from landoapi.repos import Repo, SCM_LEVEL_3
 from landoapi.storage import db as _db
-
 from tests.factories import TransResponseFactory
 from tests.mocks import PhabricatorDouble
 
@@ -51,7 +51,7 @@ class JSONClient(flask.testing.FlaskClient):
         return super(JSONClient, self).open(*args, **kwargs)
 
 
-def in_circleci():
+def env_is_circleci():
     """Are we running under CircleCI?"""
     # See https://circleci.com/docs/2.0/env-vars/#built-in-environment-variables # noqa
     return bool(os.environ.get('CIRCLECI'))
@@ -60,19 +60,16 @@ def in_circleci():
 @pytest.fixture
 def docker_env_vars(monkeypatch):
     """Monkeypatch environment variables that we'd get running under docker."""
-    if in_circleci():
+    if env_is_circleci():
         monkeypatch.setenv('ENV', 'circleci')
-        # The full test suite needs these
-        assert os.environ.get('DATABASE_URL')
-        assert os.environ.get('CACHE_REDIS_HOST')
+        db_host = socket.gethostname()
     else:
         # Assume we are running under docker-compose
         monkeypatch.setenv('ENV', 'test')
-        monkeypatch.setenv(
-            'DATABASE_URL',
-            'postgresql://postgres:password@lando-api.db/lando_api_test'
-        )
-        monkeypatch.delenv('CACHE_REDIS_HOST', raising=False)
+        db_host = 'lando-api.db'
+
+    db_url = 'postgresql://postgres:password@{}/lando_api_test'.format(db_host)
+    monkeypatch.setenv('DATABASE_URL', db_url)
 
     monkeypatch.setenv('PHABRICATOR_URL', 'http://phabricator.test')
     monkeypatch.setenv('TRANSPLANT_URL', 'http://autoland.test')
@@ -87,6 +84,7 @@ def docker_env_vars(monkeypatch):
     monkeypatch.setenv('OIDC_IDENTIFIER', 'lando-api')
     monkeypatch.setenv('OIDC_DOMAIN', 'lando-api.auth0.test')
     monkeypatch.delenv('CSP_REPORTING_URL', raising=False)
+    monkeypatch.delenv('CACHE_REDIS_HOST', raising=False)
 
 
 @pytest.fixture
@@ -250,8 +248,8 @@ def get_phab_client(app):
 
 @pytest.fixture
 def redis_cache(app):
-    if in_circleci():
-        cache_host = os.environ['CACHE_REDIS_HOST']
+    if env_is_circleci():
+        cache_host = socket.gethostname()
     else:
         # Assume we are running under docker-compose
         cache_host = 'redis.cache'
