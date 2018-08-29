@@ -51,14 +51,29 @@ class JSONClient(flask.testing.FlaskClient):
         return super(JSONClient, self).open(*args, **kwargs)
 
 
+def in_circleci():
+    """Are we running under CircleCI?"""
+    # See https://circleci.com/docs/2.0/env-vars/#built-in-environment-variables # noqa
+    return bool(os.environ.get('CIRCLECI'))
+
+
 @pytest.fixture
 def docker_env_vars(monkeypatch):
     """Monkeypatch environment variables that we'd get running under docker."""
-    monkeypatch.setenv('ENV', 'test')
-    monkeypatch.setenv(
-        'DATABASE_URL',
-        'postgresql://postgres:password@lando-api.db/lando_api_test'
-    )
+    if in_circleci():
+        monkeypatch.setenv('ENV', 'circleci')
+        # The full test suite needs these
+        assert os.environ.get('DATABASE_URL')
+        assert os.environ.get('CACHE_REDIS_HOST')
+    else:
+        # Assume we are running under docker-compose
+        monkeypatch.setenv('ENV', 'test')
+        monkeypatch.setenv(
+            'DATABASE_URL',
+            'postgresql://postgres:password@lando-api.db/lando_api_test'
+        )
+        monkeypatch.delenv('CACHE_REDIS_HOST', raising=False)
+
     monkeypatch.setenv('PHABRICATOR_URL', 'http://phabricator.test')
     monkeypatch.setenv('TRANSPLANT_URL', 'http://autoland.test')
     monkeypatch.setenv('TRANSPLANT_API_KEY', 'someapikey')
@@ -71,7 +86,6 @@ def docker_env_vars(monkeypatch):
     monkeypatch.delenv('AWS_SECRET_KEY', raising=False)
     monkeypatch.setenv('OIDC_IDENTIFIER', 'lando-api')
     monkeypatch.setenv('OIDC_DOMAIN', 'lando-api.auth0.test')
-    monkeypatch.delenv('CACHE_REDIS_HOST', raising=False)
     monkeypatch.delenv('CSP_REPORTING_URL', raising=False)
 
 
@@ -236,12 +250,18 @@ def get_phab_client(app):
 
 @pytest.fixture
 def redis_cache(app):
+    if in_circleci():
+        cache_host = os.environ['CACHE_REDIS_HOST']
+    else:
+        # Assume we are running under docker-compose
+        cache_host = 'redis.cache'
+
     with app.app_context():
         cache.init_app(
             app,
             config={
                 'CACHE_TYPE': 'redis',
-                'CACHE_REDIS_HOST': 'redis.cache',
+                'CACHE_REDIS_HOST': cache_host,
             }
         )
         cache.clear()
