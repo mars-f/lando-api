@@ -216,6 +216,32 @@ paths:
           schema:
             allOf:
               - $ref: '#/definitions/Error'
+  /revisions/{revision_id}:
+    patch:
+      description: |
+        Update a revision's data.
+      security:
+        - Auth0AccessToken: []
+          PhabricatorAPIKeyHeader: []
+      parameters:
+        - name: revision_id
+          in: path
+          type: string
+          description: |
+            The id of the revision in the form of 'D{number}', e.g. 'D12345'.
+          required: true
+        - name: data
+          description: The data fields of the revision to update.
+          in: body
+          schema:
+            - $ref: '#/definitions/Revision'
+      responses:
+        200:
+          description: OK
+        400:
+          description: Problems encountered while updating the revision.
+          schema:
+            - $ref: '#/definitions/Error'
 definitions:
   LandingPath:
     type: array
