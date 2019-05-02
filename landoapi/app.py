@@ -112,7 +112,7 @@ def load_config():
     return config
 
 
-def construct_app(config, testing=False):
+def construct_app(config):
     app = connexion.App(__name__, specification_dir="spec/")
 
     swagger_ui_enabled = config.get("ENVIRONMENT", None) == "localdev"
