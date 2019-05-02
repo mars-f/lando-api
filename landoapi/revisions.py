@@ -1,13 +1,20 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
+import inspect
 import logging
 from collections import Counter
 
-from landoapi.phabricator import PhabricatorClient, RevisionStatus
+from landoapi.phabricator import PhabricatorClient, RevisionStatus, EditOperation
 from landoapi.projects import get_secure_project_phid
 
+# The PHID of the Phabricator project containing members of the Secure
+# Bug Approval Process.
+# See https://wiki.mozilla.org/Security/Bug_Approval_Process.
+SEC_APPROVAL_PROJECT_PHID = "PHID-PROJECT-7777"
+
 logger = logging.getLogger(__name__)
+dedent = inspect.cleandoc
 
 
 def gather_involved_phids(revision):
@@ -142,3 +149,59 @@ def revision_is_secure(revision, phabclient):
         extra={"value": is_secure, "revision": revision["id"]},
     )
     return is_secure
+
+
+def send_sanitized_commit_message_for_review(revision_phid, message, phabclient):
+    """Send a sanitized commit message for review by the sec-approval team.
+
+    See https://wiki.mozilla.org/Security/Bug_Approval_Process.
+
+    Args:
+        revision_phid: The PHID of the revision to edit.
+        message: The sanitized commit message string we want to be reviewed.
+        phabclient: A PhabClient instance.
+    """
+    comment = format_sanitized_message_comment_for_review(message)
+    edit = EditOperation("differential.revision.edit", revision_phid)
+    # The caller's alternative commit message is published as a comment.
+    edit.add_transaction("comment", comment)
+    # We must get one of the sec-approval project members to approve the alternate
+    # commit message for the review to proceed. NOTE: the 'blocking(PHID)' syntax is
+    # undocumented at the time of writing.
+    blocking_reviewer = f"blocking({SEC_APPROVAL_PROJECT_PHID})"
+    edit.add_transaction("reviewers.add", [blocking_reviewer])
+    edit.send_edit(phabclient)
+
+
+def format_sanitized_message_comment_for_review(message):
+    """Turn a commit message into a formatted Phabricator comment.
+
+    The message is formatted to guide the next steps in the Security
+    Bug Approval Process.  People reading the revision and this comment
+    in the discussion thread should understand the steps necessary to move
+    the approval process forward.
+
+    See https://wiki.mozilla.org/Security/Bug_Approval_Process.
+
+    Args:
+        message: The commit message to be reviewed.
+    """
+    # The message is written in first-person form because it is being authored by the
+    # user in Lando and posted under their username.
+    #
+    # The message is formatted as Remarkup.
+    # See https://phabricator.services.mozilla.com/book/phabricator/article/remarkup/
+    return dedent(
+        f"""
+        I have written a sanitized comment message for this revision. It should 
+        follow the [Security Bug Approval Guidelines](https://wiki.mozilla.org/Security/Bug_Approval_Process).
+        
+        ````
+        {message}
+        ````
+        
+        Could a member of the `sec-approval` team please review this message?
+        If the message is suitable for landing in mozilla-central please mark
+        this code review as `Accepted`.
+    """ # noqa
+    )

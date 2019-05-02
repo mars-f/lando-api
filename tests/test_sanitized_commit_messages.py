@@ -15,25 +15,45 @@ def preamble(app, monkeypatch):
     )
 
 
-def test_submit_sanitized_commt_message(client, auth0_mock):
+@pytest.fixture
+def authed_headers(auth0_mock):
+    """Return a set of Auth0 and Phabricator auth'd headers."""
     headers = auth0_mock.mock_headers.copy()
     headers.append(("X-Phabricator-API-Key", "custom-key"))
+    return headers
+
+
+def test_submit_sanitized_commit_message(client, authed_headers, phabdouble, secure_project):
+    revision = phabdouble.revision(projects=[secure_project])
     response = client.post(
         "/submitSanitizedCommitMessage",
-        json={"revision_phid": "PHID-DREV-foo", "sanitized_message": "obscure"},
-        headers=headers,
+        json={"revision_phid": revision["phid"], "sanitized_message": "obscure"},
+        headers=authed_headers,
     )
 
-    assert 200 == response.status_code
+    assert response.status_code == 200
 
 
-def test_submitting_a_public_revision_fails(client, auth0_mock):
-    headers = auth0_mock.mock_headers.copy()
-    headers.append(("X-Phabricator-API-Key", "custom-key"))
+def test_public_revisions_cannot_be_sanitized(client, authed_headers, phabdouble):
+    public_project = phabdouble.project("public")
+    revision = phabdouble.revision(projects=[public_project])
     response = client.post(
         "/submitSanitizedCommitMessage",
-        json={"revision_phid": "PHID-DREV-foo", "sanitized_message": "oops"},
-        headers=headers,
+        json={"revision_phid": revision["phid"], "sanitized_message": "oops"},
+        headers=authed_headers,
     )
 
-    assert 400 == response.status_code
+    assert response.status_code == 400
+
+
+def test_empty_commit_message_is_an_error(client, authed_headers, phabdouble, secure_project):
+    revision = phabdouble.revision(projects=[secure_project])
+    response = client.post(
+        "/submitSanitizedCommitMessage",
+        json={"revision_phid": revision["phid"], "sanitized_message": ""},
+        headers=authed_headers,
+    )
+
+    assert response.status_code == 400
+
+
